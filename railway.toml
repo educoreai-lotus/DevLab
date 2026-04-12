@@ -8,20 +8,12 @@ healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 
-[environments.production]
-variables = { 
-  NODE_ENV = "production",
-  PORT = "3001",
-  CORS_ORIGINS = "https://dev-lab-phi.vercel.app,https://dev-lab-git-main-sabeels-projects-5df24825.vercel.app,https://dev-jsj0ymr4z-sabeels-projects-5df24825.vercel.app,healthcheck.railway.app"
-}
+[environments.production.variables]
+NODE_ENV = "production"
+PORT = "3001"
+CORS_ORIGINS = "https://dev-lab-phi.vercel.app,https://dev-lab-git-main-sabeels-projects-5df24825.vercel.app,https://dev-jsj0ymr4z-sabeels-projects-5df24825.vercel.app,healthcheck.railway.app"
 
-[environments.staging]
-variables = { 
-  NODE_ENV = "staging",
-  PORT = "3001",
-  CORS_ORIGINS = "https://devlab-frontend-staging.vercel.app"
-}
-
-
-
-
+[environments.staging.variables]
+NODE_ENV = "staging"
+PORT = "3001"
+CORS_ORIGINS = "https://devlab-frontend-staging.vercel.app"
