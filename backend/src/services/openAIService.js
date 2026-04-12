@@ -20,6 +20,48 @@ const parseJsonResponse = (raw) => {
   return raw
 }
 
+/**
+ * Grading-only parser for Chat Completions `message.content`.
+ * 1) JSON.parse full string after the same leading-fence strip as parseJsonResponse
+ * 2) If that fails, JSON.parse substring from first `{` to last `}` (inclusive)
+ * 3) If still fails, same fallback shape as parseJsonResponse: { description }
+ * Does not change parseJsonResponse behavior used by generateAssessmentCoding.
+ */
+function parseGradingResponseString(raw) {
+  if (typeof raw !== 'string') {
+    return raw
+  }
+  const trimmed = raw.trim()
+  const withoutFence = trimmed.startsWith('```')
+    ? trimmed.replace(/```json?|\```/gi, '').trim()
+    : trimmed
+
+  const tryParse = (s) => {
+    try {
+      return { ok: true, value: JSON.parse(s) }
+    } catch {
+      return { ok: false }
+    }
+  }
+
+  let attempt = tryParse(withoutFence)
+  if (attempt.ok) {
+    return attempt.value
+  }
+
+  const start = withoutFence.indexOf('{')
+  const end = withoutFence.lastIndexOf('}')
+  if (start !== -1 && end > start) {
+    const candidate = withoutFence.slice(start, end + 1)
+    attempt = tryParse(candidate)
+    if (attempt.ok) {
+      return attempt.value
+    }
+  }
+
+  return { description: withoutFence }
+}
+
 class OpenAIService {
   async #callOpenAI(prompt, { temperature } = {}) {
     const apiKey = process.env.OPENAI_API_KEY
@@ -258,8 +300,8 @@ Return only this JSON object, with no additional text or markdown formatting.`
       console.log('[DevLab][GRADE][OPENAI][RESPONSE] Response length:', rawResponse?.length || 0, 'characters')
       console.log('[DevLab][GRADE][OPENAI][RESPONSE] Response preview (first 1000 chars):', rawResponse?.substring(0, 1000) || 'empty')
       
-      const parsed = parseJsonResponse(rawResponse)
-      
+      const parsed = parseGradingResponseString(rawResponse)
+
       console.log('[DevLab][GRADE][OPENAI][PARSE] Parsed response type:', typeof parsed)
       console.log('[DevLab][GRADE][OPENAI][PARSE] Parsed response structure:', {
         isNumber: typeof parsed === 'number',
@@ -269,34 +311,75 @@ Return only this JSON object, with no additional text or markdown formatting.`
         skillsKeys: parsed?.skills ? Object.keys(parsed.skills) : null
       })
 
+      const safeParsed =
+        parsed === null || parsed === undefined ? {} : parsed
+
       if (parsed === null || parsed === undefined) {
-        console.error('[DevLab][GRADE][OPENAI][ERROR] Invalid response format from OpenAI - parsed is null/undefined')
-        throw new Error('Invalid response format from OpenAI')
+        console.error('[DevLab][GRADE][OPENAI][WARN] Grading parse returned null/undefined; defaulting score to 0', {
+          rawResponsePreview:
+            typeof rawResponse === 'string'
+              ? rawResponse.substring(0, 2000)
+              : rawResponse
+        })
       }
 
-      // Support either a raw number or an object with score/overallScore
+      // Support either a raw number or an object with score/overallScore (strict number only)
       let rawScore
-      if (typeof parsed === 'number') {
-        rawScore = parsed
+      if (typeof safeParsed === 'number') {
+        rawScore = safeParsed
         console.log('[DevLab][GRADE][OPENAI][SCORE] Extracted score from number:', rawScore)
-      } else if (typeof parsed.score === 'number') {
-        rawScore = parsed.score
+      } else if (typeof safeParsed.score === 'number') {
+        rawScore = safeParsed.score
         console.log('[DevLab][GRADE][OPENAI][SCORE] Extracted score from parsed.score:', rawScore)
-      } else if (typeof parsed.overallScore === 'number') {
-        rawScore = parsed.overallScore
+      } else if (typeof safeParsed.overallScore === 'number') {
+        rawScore = safeParsed.overallScore
         console.log('[DevLab][GRADE][OPENAI][SCORE] Extracted score from parsed.overallScore:', rawScore)
       } else {
-        console.error('[DevLab][GRADE][OPENAI][ERROR] OpenAI response does not contain a valid score field')
-        console.error('[DevLab][GRADE][OPENAI][ERROR] Parsed object keys:', Object.keys(parsed || {}))
-        console.error('[DevLab][GRADE][OPENAI][ERROR] Full parsed object:', JSON.stringify(parsed, null, 2))
-        throw new Error('OpenAI response does not contain a valid score field')
+        const start =
+          typeof rawResponse === 'string' ? rawResponse.indexOf('{') : -1
+        const end =
+          typeof rawResponse === 'string' ? rawResponse.lastIndexOf('}') : -1
+        const extractedBraceSlice =
+          start !== -1 && end > start && typeof rawResponse === 'string'
+            ? rawResponse.slice(start, end + 1)
+            : null
+        console.error(
+          '[DevLab][GRADE][OPENAI][WARN] No numeric score/overallScore after grading parse; defaulting score to 0',
+          {
+            rawResponseLength: typeof rawResponse === 'string' ? rawResponse.length : null,
+            rawResponsePreview:
+              typeof rawResponse === 'string'
+                ? rawResponse.substring(0, 2000)
+                : rawResponse,
+            extractedBraceSlicePreview:
+              extractedBraceSlice !== null
+                ? extractedBraceSlice.substring(0, 2000)
+                : null,
+            parsedType: typeof safeParsed,
+            parsedKeys:
+              safeParsed && typeof safeParsed === 'object'
+                ? Object.keys(safeParsed)
+                : null,
+            parsedSerialized:
+              safeParsed && typeof safeParsed === 'object'
+                ? JSON.stringify(safeParsed, null, 2)
+                : String(safeParsed)
+          }
+        )
+        rawScore = 0
       }
 
       const normalizedScore = Math.max(0, Math.min(100, Number(rawScore) || 0))
       console.log('[DevLab][GRADE][OPENAI][SCORE] Normalized score:', normalizedScore, '(raw:', rawScore, ')')
 
       // Extract skill-level scores and feedback if present
-      const skills = parsed?.skills && typeof parsed.skills === 'object' ? parsed.skills : null
+      const skills =
+        safeParsed &&
+        typeof safeParsed === 'object' &&
+        safeParsed.skills &&
+        typeof safeParsed.skills === 'object'
+          ? safeParsed.skills
+          : null
       
       if (skills) {
         console.log('[DevLab][GRADE][OPENAI][SKILLS] Skills breakdown received:', {
