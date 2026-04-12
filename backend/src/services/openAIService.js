@@ -236,19 +236,10 @@ For each solution, evaluate using these three dimensions:
 2. Skill Application (30% weight): Does the solution demonstrate proper use of the skills the question was designed to assess?
 3. Requirement Compliance (30% weight): Does the solution fully meet all requirements described in the question description?
 
-SKILL-LEVEL EVALUATION REQUIREMENTS:
-For EACH skill listed in "Skills Being Assessed", you MUST:
-1. Assign a numeric score from 0 to 100 based on the learner's demonstrated mastery across all solutions
-   - Evaluate the skill using the three dimensions above (Correctness 40%, Skill Application 30%, Requirement Compliance 30%)
-   - Consider how well the learner applied this specific skill in their solutions
-2. Provide a concise feedback description explaining:
-   - The learner's strengths and weaknesses for this skill
-   - Mastery level classification: "Excellent", "Good", "Partial", or "Weak"
-   - Specific examples from the solutions that demonstrate the skill level
-
-FINAL SCORE CALCULATION:
-Compute the final overall score (0-100) as the average of all individual skill scores.
-If multiple skills are assessed, weight them equally unless one skill is clearly more critical to the assessment.
+INTERNAL SKILL CONSIDERATION (DO NOT OUTPUT PER-SKILL DETAIL):
+The list "Skills Being Assessed" may be long. You must mentally consider every skill in that list when judging the work (as if you assigned each skill a 0–100 mastery score using the three dimensions above, then combined them).
+- Weight skills equally unless one skill is clearly dominant for the questions shown.
+- Your final single "score" (0–100) must reflect performance across the full skill set, not only a subset.
 
 ASSESSMENT DETAILS:
 Total Questions: ${questions.length}
@@ -257,34 +248,24 @@ Skills Being Assessed: ${allSkills}
 QUESTIONS AND SOLUTIONS:
 ${questionsText}
 
-EVALUATION INSTRUCTIONS:
-1. Analyze each solution using the three evaluation dimensions (Correctness, Skill Application, Requirement Compliance)
-2. For each skill in "Skills Being Assessed", determine:
-   - A numeric score (0-100) reflecting mastery across all solutions
-   - Clear feedback describing strengths, weaknesses, and mastery level
-3. Calculate the final overall score as the average of all skill scores
-4. Ensure each skill score reflects how well the learner demonstrated that skill across all questions
+OUTPUT (COMPACT JSON ONLY):
+Return a single JSON object with this exact structure. Keep it short; do not include per-skill scores or per-skill feedback for the full list.
 
-Return your evaluation as a JSON object with this exact structure:
 {
-  "score": <number 0-100, calculated as average of all skill scores>,
-  "skills": {
-    "<skill_name_1>": {
-      "score": <number 0-100>,
-      "feedback": "<concise description of mastery level, strengths, and weaknesses>"
-    },
-    "<skill_name_2>": {
-      "score": <number 0-100>,
-      "feedback": "<concise description of mastery level, strengths, and weaknesses>"
+  "score": <number 0-100, overall mastery aligned with the criteria and the full "Skills Being Assessed" list>,
+  "summary": "<optional: at most 2 short sentences of overall feedback>",
+  "weakest_skills": [
+    {
+      "skill": "<exact name from Skills Being Assessed>",
+      "note": "<optional: one short line; omit or use empty string if none>"
     }
-  }
+  ]
 }
 
-IMPORTANT:
-- Include ALL skills from "Skills Being Assessed" in the skills object
-- Each skill must have both a numeric score and feedback
-- The final "score" must be the average of all skill scores
-- Use skill names exactly as they appear in "Skills Being Assessed"
+RULES FOR weakest_skills:
+- Include at most 3 entries. Use fewer or an empty array [] if there is nothing meaningful to highlight.
+- Each "skill" must be copied exactly from "Skills Being Assessed" when you name a weakness.
+- Do NOT output a "skills" object keyed by every assessed skill. Do NOT enumerate feedback for all skills.
 
 Return only this JSON object, with no additional text or markdown formatting.`
 
@@ -307,8 +288,13 @@ Return only this JSON object, with no additional text or markdown formatting.`
         isNumber: typeof parsed === 'number',
         hasScore: typeof parsed?.score === 'number',
         hasOverallScore: typeof parsed?.overallScore === 'number',
-        hasSkills: !!parsed?.skills,
-        skillsKeys: parsed?.skills ? Object.keys(parsed.skills) : null
+        hasSummary: typeof parsed?.summary === 'string',
+        hasWeakestSkills: Array.isArray(parsed?.weakest_skills),
+        hasLegacySkills: !!(parsed?.skills && typeof parsed.skills === 'object'),
+        legacySkillsKeys:
+          parsed?.skills && typeof parsed.skills === 'object'
+            ? Object.keys(parsed.skills)
+            : null
       })
 
       const GRADING_SCORE_PARSE_ERR =
@@ -374,41 +360,81 @@ Return only this JSON object, with no additional text or markdown formatting.`
       const normalizedScore = Math.max(0, Math.min(100, Number(rawScore) || 0))
       console.log('[DevLab][GRADE][OPENAI][SCORE] Normalized score:', normalizedScore, '(raw:', rawScore, ')')
 
-      // Extract skill-level scores and feedback if present
-      const skills =
+      const normalizeWeakestSkills = (raw) => {
+        if (!Array.isArray(raw)) return null
+        const out = []
+        for (const item of raw) {
+          if (out.length >= 3) break
+          if (!item || typeof item !== 'object') continue
+          const name =
+            typeof item.skill === 'string'
+              ? item.skill.trim()
+              : typeof item.name === 'string'
+                ? item.name.trim()
+                : ''
+          if (!name) continue
+          const note =
+            typeof item.note === 'string'
+              ? item.note.trim()
+              : typeof item.feedback === 'string'
+                ? item.feedback.trim()
+                : ''
+          out.push(note ? { skill: name, note } : { skill: name })
+        }
+        return out.length > 0 ? out : null
+      }
+
+      let weakestSkills = null
+      let summary = null
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.summary === 'string' && parsed.summary.trim()) {
+          summary = parsed.summary.trim()
+        }
+        weakestSkills = normalizeWeakestSkills(parsed.weakest_skills)
+      }
+
+      // Legacy: full per-skill object (still accepted if the model returns it)
+      const legacySkills =
         parsed &&
         typeof parsed === 'object' &&
         parsed.skills &&
         typeof parsed.skills === 'object'
           ? parsed.skills
           : null
-      
-      if (skills) {
-        console.log('[DevLab][GRADE][OPENAI][SKILLS] Skills breakdown received:', {
-          skillsCount: Object.keys(skills).length,
-          skillsList: Object.keys(skills),
-          sampleSkill: Object.keys(skills)[0] ? {
-            skillName: Object.keys(skills)[0],
-            score: skills[Object.keys(skills)[0]]?.score,
-            feedbackLength: skills[Object.keys(skills)[0]]?.feedback?.length || 0
-          } : null
+
+      if (weakestSkills) {
+        console.log('[DevLab][GRADE][OPENAI][SKILLS] Weakest skills (compact):', {
+          count: weakestSkills.length,
+          skills: weakestSkills.map((w) => w.skill)
+        })
+      } else if (legacySkills) {
+        console.log('[DevLab][GRADE][OPENAI][SKILLS] Legacy per-skill object received:', {
+          skillsCount: Object.keys(legacySkills).length,
+          skillsList: Object.keys(legacySkills)
         })
       } else {
-        console.log('[DevLab][GRADE][OPENAI][SKILLS] No skills breakdown in response')
+        console.log('[DevLab][GRADE][OPENAI][SKILLS] No weakest_skills or legacy skills in response')
       }
 
       const result = {
         score: normalizedScore
       }
 
-      // Include skills breakdown if available
-      if (skills) {
-        result.skills = skills
+      if (summary) {
+        result.summary = summary
+      }
+      if (weakestSkills) {
+        result.weakest_skills = weakestSkills
+      }
+      if (legacySkills) {
+        result.skills = legacySkills
       }
 
       console.log('[DevLab][GRADE][OPENAI][SUCCESS] Grading completed successfully:', {
         score: result.score,
-        hasSkills: !!result.skills
+        hasSummary: !!result.summary,
+        hasWeakestSkills: !!result.weakest_skills,
+        hasLegacySkills: !!result.skills
       })
 
       return result
