@@ -311,28 +311,32 @@ Return only this JSON object, with no additional text or markdown formatting.`
         skillsKeys: parsed?.skills ? Object.keys(parsed.skills) : null
       })
 
-      const safeParsed =
-        parsed === null || parsed === undefined ? {} : parsed
+      const GRADING_SCORE_PARSE_ERR =
+        'OpenAI grading response could not be parsed into a valid numeric score'
 
       if (parsed === null || parsed === undefined) {
-        console.error('[DevLab][GRADE][OPENAI][WARN] Grading parse returned null/undefined; defaulting score to 0', {
-          rawResponsePreview:
-            typeof rawResponse === 'string'
-              ? rawResponse.substring(0, 2000)
-              : rawResponse
-        })
+        console.error(
+          '[DevLab][GRADE][OPENAI][ERROR] Grading parse returned null/undefined',
+          {
+            rawResponsePreview:
+              typeof rawResponse === 'string'
+                ? rawResponse.substring(0, 2000)
+                : rawResponse
+          }
+        )
+        throw new Error(GRADING_SCORE_PARSE_ERR)
       }
 
-      // Support either a raw number or an object with score/overallScore (strict number only)
+      // Support either a raw number or an object with score/overallScore (strict number only; score 0 is valid)
       let rawScore
-      if (typeof safeParsed === 'number') {
-        rawScore = safeParsed
+      if (typeof parsed === 'number') {
+        rawScore = parsed
         console.log('[DevLab][GRADE][OPENAI][SCORE] Extracted score from number:', rawScore)
-      } else if (typeof safeParsed.score === 'number') {
-        rawScore = safeParsed.score
+      } else if (typeof parsed.score === 'number') {
+        rawScore = parsed.score
         console.log('[DevLab][GRADE][OPENAI][SCORE] Extracted score from parsed.score:', rawScore)
-      } else if (typeof safeParsed.overallScore === 'number') {
-        rawScore = safeParsed.overallScore
+      } else if (typeof parsed.overallScore === 'number') {
+        rawScore = parsed.overallScore
         console.log('[DevLab][GRADE][OPENAI][SCORE] Extracted score from parsed.overallScore:', rawScore)
       } else {
         const start =
@@ -344,7 +348,7 @@ Return only this JSON object, with no additional text or markdown formatting.`
             ? rawResponse.slice(start, end + 1)
             : null
         console.error(
-          '[DevLab][GRADE][OPENAI][WARN] No numeric score/overallScore after grading parse; defaulting score to 0',
+          '[DevLab][GRADE][OPENAI][ERROR] No numeric score or overallScore after grading parse (full-string and first-{ to last-} attempts)',
           {
             rawResponseLength: typeof rawResponse === 'string' ? rawResponse.length : null,
             rawResponsePreview:
@@ -355,18 +359,16 @@ Return only this JSON object, with no additional text or markdown formatting.`
               extractedBraceSlice !== null
                 ? extractedBraceSlice.substring(0, 2000)
                 : null,
-            parsedType: typeof safeParsed,
+            parsedType: typeof parsed,
             parsedKeys:
-              safeParsed && typeof safeParsed === 'object'
-                ? Object.keys(safeParsed)
-                : null,
+              parsed && typeof parsed === 'object' ? Object.keys(parsed) : null,
             parsedSerialized:
-              safeParsed && typeof safeParsed === 'object'
-                ? JSON.stringify(safeParsed, null, 2)
-                : String(safeParsed)
+              parsed && typeof parsed === 'object'
+                ? JSON.stringify(parsed, null, 2)
+                : String(parsed)
           }
         )
-        rawScore = 0
+        throw new Error(GRADING_SCORE_PARSE_ERR)
       }
 
       const normalizedScore = Math.max(0, Math.min(100, Number(rawScore) || 0))
@@ -374,11 +376,11 @@ Return only this JSON object, with no additional text or markdown formatting.`
 
       // Extract skill-level scores and feedback if present
       const skills =
-        safeParsed &&
-        typeof safeParsed === 'object' &&
-        safeParsed.skills &&
-        typeof safeParsed.skills === 'object'
-          ? safeParsed.skills
+        parsed &&
+        typeof parsed === 'object' &&
+        parsed.skills &&
+        typeof parsed.skills === 'object'
+          ? parsed.skills
           : null
       
       if (skills) {
