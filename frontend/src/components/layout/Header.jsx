@@ -1,12 +1,17 @@
 import { useAuthStore } from '../../store/authStore.js'
+import { logout as performPlatformLogout } from '../../auth/logout.js'
 import { Bell, User, LogOut } from 'lucide-react'
 import Button from '../ui/Button.jsx'
 import ThemeToggle from '../ThemeToggle.jsx'
 import { useTheme } from '../../contexts/ThemeContext.jsx'
 
 export default function Header() {
-  const { user, logout } = useAuthStore()
+  const { user } = useAuthStore()
   const { theme } = useTheme()
+
+  const handleLogout = () => {
+    void performPlatformLogout()
+  }
 
   const logoUrl = theme === 'day-mode' ? '/light-logo.jpeg' : '/dark-logo.jpeg'
   console.log('[Header] logoUrl:', logoUrl)
@@ -84,7 +89,7 @@ export default function Header() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={logout}
+                  onClick={handleLogout}
                   className={`transition-all duration-300 hover:scale-110 ${theme === 'day-mode' ? 'text-gray-400 hover:text-gray-600' : 'text-gray-400 hover:text-gray-300'}`}
                 >
                   <LogOut className="h-4 w-4" />
