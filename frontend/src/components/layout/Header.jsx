@@ -1,12 +1,10 @@
-import { useAuthStore } from '../../store/authStore.js'
 import { logout as performPlatformLogout } from '../../auth/logout.js'
-import { Bell, User, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import Button from '../ui/Button.jsx'
 import ThemeToggle from '../ThemeToggle.jsx'
 import { useTheme } from '../../contexts/ThemeContext.jsx'
 
 export default function Header() {
-  const { user } = useAuthStore()
   const { theme } = useTheme()
 
   const handleLogout = () => {
@@ -59,43 +57,16 @@ export default function Header() {
           </div>
           
           <div className="flex items-center space-x-4">
-            {/* Theme Toggle */}
             <ThemeToggle />
-            
-            <button 
-              className={`p-2 rounded-lg transition-colors ${theme === 'day-mode' ? 'text-gray-400 hover:text-gray-600' : 'text-gray-400 hover:text-gray-300'}`}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className={`transition-all duration-300 hover:scale-110 ${theme === 'day-mode' ? 'text-gray-400 hover:text-gray-600' : 'text-gray-400 hover:text-gray-300'}`}
             >
-              <Bell className="h-5 w-5" />
-            </button>
-            
-            <div className="flex items-center space-x-3">
-              <div className="text-right hidden sm:block">
-                <p className={`text-sm font-semibold ${theme === 'day-mode' ? 'text-gray-900' : 'text-white'}`}>
-                  {user?.name}
-                </p>
-                <p className={`text-xs capitalize ${theme === 'day-mode' ? 'text-gray-600' : 'text-gray-400'}`}>
-                  {user?.role}
-                </p>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <div 
-                  className="h-10 w-10 rounded-full flex items-center justify-center text-white font-semibold"
-                  style={{ background: 'var(--gradient-primary)' }}
-                >
-                  <User className="h-5 w-5" />
-                </div>
-                
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLogout}
-                  className={`transition-all duration-300 hover:scale-110 ${theme === 'day-mode' ? 'text-gray-400 hover:text-gray-600' : 'text-gray-400 hover:text-gray-300'}`}
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>
