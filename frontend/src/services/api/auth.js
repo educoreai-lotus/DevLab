@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import { clearAuthToken, setAuthToken } from '../../auth/platformAuth.js'
 
 export const authApi = {
   async login(email, password) {
@@ -8,7 +9,7 @@ export const authApi = {
     })
     
     if (response.user) {
-      localStorage.setItem('auth-token', response.token || 'mock-jwt-token')
+      setAuthToken(response.token || 'mock-jwt-token')
     }
     
     return response
@@ -18,7 +19,7 @@ export const authApi = {
     const response = await apiClient.post('/auth/register', userData)
     
     if (response.user) {
-      localStorage.setItem('auth-token', response.token || 'mock-jwt-token')
+      setAuthToken(response.token || 'mock-jwt-token')
     }
     
     return response
@@ -34,7 +35,7 @@ export const authApi = {
 
   async logout() {
     await apiClient.post('/auth/logout')
-    localStorage.removeItem('auth-token')
+    clearAuthToken()
   },
 
   async getProfile() {

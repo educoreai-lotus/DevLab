@@ -10,6 +10,7 @@ import ContentStudioPreview from './pages/ContentStudioPreview.jsx'
 import CodeContentStudioPreview from './pages/CodeContentStudioPreview.jsx'
 import ValidateQuestionPreview from './pages/ValidateQuestionPreview.jsx'
 import { useAuthStore } from './store/authStore.js'
+import { getAuthToken } from './auth/platformAuth.js'
 import './styles/theme-transitions.css'
 
 function App() {
@@ -17,7 +18,7 @@ function App() {
   
   // Expose user data to window for bot initialization (HTML script handles initialization)
   useEffect(() => {
-    const token = localStorage.getItem('auth-token') || ''
+    const token = getAuthToken() || ''
     window.APP_USER = {
       id: user?.id || 'anonymous',
       token: token,

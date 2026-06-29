@@ -1,5 +1,6 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
+import { clearAuthToken, getAuthToken, setAuthToken } from '../../auth/platformAuth.js'
 
 class ApiClient {
   constructor() {
@@ -15,10 +16,9 @@ class ApiClient {
   }
 
   setupInterceptors() {
-    // Request interceptor
     this.client.interceptors.request.use(
       (config) => {
-        const token = localStorage.getItem('auth-token')
+        const token = getAuthToken()
         if (token) {
           config.headers.Authorization = `Bearer ${token}`
         }
@@ -38,23 +38,23 @@ class ApiClient {
       (error) => Promise.reject(error)
     )
 
-    // Response interceptor
     this.client.interceptors.response.use(
       (response) => {
+        const rotatedToken = response.headers?.['x-new-access-token']
+        if (rotatedToken) {
+          setAuthToken(rotatedToken)
+        }
         return response
       },
       (error) => {
         if (error.response?.status === 401) {
-          localStorage.removeItem('auth-token')
-          if (false) {
-            window.location.href = '/login'
-          }
+          clearAuthToken()
         }
-        
+
         if (error.response?.status >= 500) {
           toast.error('Server error. Please try again later.')
         }
-        
+
         return Promise.reject(error)
       }
     )
@@ -87,5 +87,3 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient()
-
-

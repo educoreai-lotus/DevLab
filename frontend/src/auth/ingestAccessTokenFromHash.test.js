@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ingestAccessTokenFromHash } from './ingestAccessTokenFromHash.js'
+import { AUTH_TOKEN_STORAGE_KEY } from './platformAuth.js'
 
 describe('ingestAccessTokenFromHash', () => {
   beforeEach(() => {
@@ -11,13 +12,13 @@ describe('ingestAccessTokenFromHash', () => {
     localStorage.clear()
   })
 
-  it('stores access_token from hash in localStorage auth-token', () => {
+  it('stores access_token from hash in localStorage auth_token', () => {
     window.history.replaceState(null, '', '/dashboard#access_token=test-jwt-token')
 
     const ingested = ingestAccessTokenFromHash()
 
     expect(ingested).toBe(true)
-    expect(localStorage.getItem('auth-token')).toBe('test-jwt-token')
+    expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('test-jwt-token')
   })
 
   it('removes access_token from the visible URL after ingestion', () => {
@@ -36,6 +37,15 @@ describe('ingestAccessTokenFromHash', () => {
     const ingested = ingestAccessTokenFromHash()
 
     expect(ingested).toBe(false)
-    expect(localStorage.getItem('auth-token')).toBeNull()
+    expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull()
+  })
+
+  it('does not read access_token from query params', () => {
+    window.history.replaceState(null, '', '/dashboard?access_token=query-jwt')
+
+    const ingested = ingestAccessTokenFromHash()
+
+    expect(ingested).toBe(false)
+    expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull()
   })
 })

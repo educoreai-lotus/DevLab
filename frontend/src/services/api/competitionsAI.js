@@ -2,7 +2,11 @@ import { apiClient } from './client.js'
 
 export const competitionsAIAPI = {
   async getAuthContext() {
-    return apiClient.get('/auth/context')
+    const response = await apiClient.get('/auth/context')
+    if (response?.success && response?.data) {
+      return response.data
+    }
+    return response
   },
 
   async getPendingCompetitionsForMe() {

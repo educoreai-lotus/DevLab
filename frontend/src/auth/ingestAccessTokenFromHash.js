@@ -1,3 +1,5 @@
+import { setAuthToken } from './platformAuth.js'
+
 /**
  * Ingest platform JWT from URL hash (#access_token=...) into localStorage.
  * Strips access_token from the visible URL without logging the token.
@@ -18,7 +20,7 @@ export function ingestAccessTokenFromHash() {
     return false
   }
 
-  localStorage.setItem('auth-token', token)
+  setAuthToken(token)
 
   params.delete('access_token')
   const remaining = params.toString()
