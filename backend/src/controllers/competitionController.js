@@ -20,6 +20,33 @@ const competitionAuthDisabled =
   !process.env.DISABLE_COMPETITION_AUTH ||
   process.env.DISABLE_COMPETITION_AUTH === 'true'
 
+const getPlatformLearnerId = (req) => req.user?.directoryUserId || null
+
+const assertCompetitionOwnership = (competition, req, res) => {
+  if (competitionAuthDisabled) {
+    return true
+  }
+
+  const learnerId = getPlatformLearnerId(req)
+  if (!learnerId) {
+    res.status(401).json({
+      success: false,
+      error: 'Platform authentication required'
+    })
+    return false
+  }
+
+  if (competition.learner_id !== learnerId) {
+    res.status(403).json({
+      success: false,
+      error: 'This competition does not belong to the authenticated learner'
+    })
+    return false
+  }
+
+  return true
+}
+
 const ensureUserProfile = async (learnerId, learnerName = null) => {
   if (!learnerId) {
     throw new Error('learnerId is required to upsert user profile')
@@ -631,10 +658,35 @@ export const competitionController = {
     }
   },
 
+  async getPendingAICompetitionsForMe(req, res) {
+    try {
+      const directoryUserId = getPlatformLearnerId(req)
+
+      if (!directoryUserId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Platform user identity required'
+        })
+      }
+
+      const pendingCourses = await CompetitionAIModel.getPendingCourses(directoryUserId)
+      return res.json({
+        success: true,
+        data: pendingCourses
+      })
+    } catch (error) {
+      console.error('❌ [competitions] Failed to fetch pending competitions for authenticated user:', error)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch pending competitions',
+        message: error.message
+      })
+    }
+  },
+
   async startAICompetition(req, res) {
     try {
       const { competitionId } = req.params
-      const learnerId = req.user?.id
 
       if (!competitionId) {
         return res.status(400).json({
@@ -651,11 +703,8 @@ export const competitionController = {
         })
       }
 
-      if (!competitionAuthDisabled && competition.learner_id !== learnerId) {
-        return res.status(403).json({
-          success: false,
-          error: 'This competition does not belong to the authenticated learner'
-        })
+      if (!assertCompetitionOwnership(competition, req, res)) {
+        return
       }
 
       const updated = await ensureActiveQuestion(competition)
@@ -678,7 +727,6 @@ export const competitionController = {
     try {
       const { competitionId } = req.params
       const { question_id, answer } = req.body || {}
-      const learnerId = req.user?.id
 
       if (!question_id) {
         return res.status(400).json({
@@ -697,11 +745,8 @@ export const competitionController = {
         })
       }
 
-      if (!competitionAuthDisabled && competition.learner_id !== learnerId) {
-        return res.status(403).json({
-          success: false,
-          error: 'This competition does not belong to the authenticated learner'
-        })
+      if (!assertCompetitionOwnership(competition, req, res)) {
+        return
       }
 
       let workingCompetition = await ensureActiveQuestion(competition)
@@ -759,7 +804,6 @@ export const competitionController = {
   async completeAICompetition(req, res) {
     try {
       const { competitionId } = req.params
-      const learnerId = req.user?.id
 
       const competition = await CompetitionAIModel.findById(competitionId)
       if (!competition) {
@@ -769,11 +813,8 @@ export const competitionController = {
         })
       }
 
-      if (!competitionAuthDisabled && competition.learner_id !== learnerId) {
-        return res.status(403).json({
-          success: false,
-          error: 'This competition does not belong to the authenticated learner'
-        })
+      if (!assertCompetitionOwnership(competition, req, res)) {
+        return
       }
 
       let workingCompetition = await ensureActiveQuestion(competition)

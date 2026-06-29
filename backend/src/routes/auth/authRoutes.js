@@ -1,8 +1,10 @@
 import express from 'express'
 import { body } from 'express-validator'
 import { authenticateToken } from '../../middleware/auth.js'
+import { authenticatePlatformUser } from '../../middleware/platformAuth.js'
 import { validateRequest } from '../../middleware/validateRequest.js'
 import { authController } from '../../controllers/authController.js'
+import { platformAuthController } from '../../controllers/platformAuthController.js'
 
 const router = express.Router()
 
@@ -21,6 +23,8 @@ const registerValidation = [
 ]
 
 // Routes
+router.get('/context', authenticatePlatformUser, platformAuthController.getAuthContext)
+
 router.post('/login', loginValidation, validateRequest, authController.login)
 router.post('/register', registerValidation, validateRequest, authController.register)
 router.post('/validate', authController.validateToken)

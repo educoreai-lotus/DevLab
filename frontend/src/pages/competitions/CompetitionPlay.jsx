@@ -2,12 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { competitionsAIAPI } from '../../services/api/competitionsAI.js'
-import { useAuthStore } from '../../store/authStore.js'
+import { getDevLearnerOverrideId, hasAuthToken } from '../../auth/platformAuth.js'
 import { Code, Sparkles, Terminal, Cpu, Trophy, Bot, Smile } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext.jsx'
-
-const DEFAULT_FORCED_LEARNER_ID = '50a630f4-826e-45aa-8f70-653e5e592fc3'
-
 
 const QUESTIONS_PER_COMPETITION = 3
 const QUESTION_TIMER_SECONDS = 10 * 60 // 10 minutes per question
@@ -26,13 +23,12 @@ export default function CompetitionPlay() {
   const { competitionId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const { user } = useAuthStore()
   const { theme } = useTheme()
   const isDark = theme === 'night-mode'
 
-  const forcedLearnerId =
-    import.meta.env.VITE_FORCE_LEARNER_ID || DEFAULT_FORCED_LEARNER_ID
-  const learnerId = user?.id || forcedLearnerId || null
+  const devLearnerOverride = getDevLearnerOverrideId()
+  const platformMode = import.meta.env.PROD || hasAuthToken()
+  const canAccessCompetition = platformMode ? hasAuthToken() : Boolean(hasAuthToken() || devLearnerOverride)
 
   const [competition, setCompetition] = useState(location.state?.competition || null)
   const [session, setSession] = useState(location.state?.session || null)
@@ -58,7 +54,7 @@ export default function CompetitionPlay() {
 
 
   useEffect(() => {
-    if (competition || !learnerId || !competitionId) {
+    if (competition || !canAccessCompetition || !competitionId) {
       return
     }
 
@@ -66,7 +62,9 @@ export default function CompetitionPlay() {
 
     ;(async () => {
       try {
-        const pending = await competitionsAIAPI.getPendingCompetitions(learnerId)
+        const pending = hasAuthToken()
+          ? await competitionsAIAPI.getPendingCompetitionsForMe()
+          : await competitionsAIAPI.getPendingCompetitions(devLearnerOverride)
         if (!isMounted) {
           return
         }
@@ -80,7 +78,7 @@ export default function CompetitionPlay() {
     return () => {
       isMounted = false
     }
-  }, [competition, learnerId, competitionId])
+  }, [competition, canAccessCompetition, competitionId, devLearnerOverride])
 
   const fetchSession = useCallback(async () => {
     if (!competitionId || startAttemptedRef.current) {
@@ -110,10 +108,10 @@ export default function CompetitionPlay() {
   }, [competitionId])
 
   useEffect(() => {
-    if (!session && competitionId) {
+    if (!session && competitionId && canAccessCompetition) {
       fetchSession()
     }
-  }, [session, competitionId, fetchSession])
+  }, [session, competitionId, fetchSession, canAccessCompetition])
 
   const handleRetryStart = useCallback(() => {
     startAttemptedRef.current = false
@@ -760,7 +758,7 @@ export default function CompetitionPlay() {
     )
   }
 
-  if (!learnerId) {
+  if (!canAccessCompetition) {
     return (
       <div className={`min-h-screen flex items-center justify-center px-4 ${
         isDark
@@ -768,7 +766,7 @@ export default function CompetitionPlay() {
           : 'bg-gradient-to-br from-white via-slate-100 to-slate-200 text-slate-900'
       }`}>
         <p className={`text-center font-medium ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-          Unable to determine learner context. Please sign in again.
+          Sign in through Directory to access this competition.
         </p>
       </div>
     )

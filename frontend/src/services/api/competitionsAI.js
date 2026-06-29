@@ -1,6 +1,15 @@
 import { apiClient } from './client.js'
 
 export const competitionsAIAPI = {
+  async getAuthContext() {
+    return apiClient.get('/auth/context')
+  },
+
+  async getPendingCompetitionsForMe() {
+    const response = await apiClient.get('/competitions/pending/me')
+    return response?.data || []
+  },
+
   async getPendingCompetitions(learnerId) {
     if (!learnerId) {
       return []

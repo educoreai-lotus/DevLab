@@ -8,7 +8,7 @@
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",
     "build": "echo 'Backend build completed - no compilation needed for Node.js'", 
-    "test": "jest",
+    "test": "node --experimental-vm-modules ../node_modules/jest/bin/jest.js",
     "test:ci": "jest --ci --coverage --watchAll=false",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

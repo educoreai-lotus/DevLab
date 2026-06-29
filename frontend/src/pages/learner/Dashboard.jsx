@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../store/authStore.js'
 import { apiClient } from '../../services/api/client.js'
 import { competitionsAIAPI } from '../../services/api/competitionsAI.js'
+import { getAuthToken, getDevLearnerOverrideId, hasAuthToken } from '../../auth/platformAuth.js'
 import { Trophy, Clock, Play, Target, Award } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext.jsx'
-
-const DEFAULT_FORCED_LEARNER_ID = '50a630f4-826e-45aa-8f70-653e5e592fc3'
 
 const CompetitionCard = ({ competition, onStart }) => (
   <motion.div
@@ -44,110 +42,122 @@ const CompetitionCard = ({ competition, onStart }) => (
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
   const { theme } = useTheme()
-  const forcedLearnerId =
-    import.meta.env.VITE_FORCE_LEARNER_ID || DEFAULT_FORCED_LEARNER_ID
-  const effectiveUser = forcedLearnerId
-    ? { id: forcedLearnerId, role: 'learner' }
-    : user
-  const learnerId = effectiveUser?.id
+  const devLearnerOverride = getDevLearnerOverrideId()
+  const usePlatformAuth = import.meta.env.PROD || hasAuthToken()
 
+  const [authContext, setAuthContext] = useState(null)
   const [learnerProfile, setLearnerProfile] = useState(null)
   const [pendingCompetitions, setPendingCompetitions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Initialize chatbot when user is available
+  const directoryUserId = authContext?.directoryUserId || devLearnerOverride || null
+
+  // Initialize chatbot when platform user is available
   useEffect(() => {
     let retryCount = 0
-    const MAX_RETRIES = 50 // 5 seconds maximum (50 * 100ms)
+    const MAX_RETRIES = 50
     let timeoutId = null
-    
+
     function initChatbot() {
-      const token = localStorage.getItem('auth-token') || ''
-      
-      if (effectiveUser && effectiveUser.id && effectiveUser.id !== 'anonymous' && token) {
+      const token = getAuthToken()
+
+      if (directoryUserId && token) {
         if (window.initializeEducoreBot) {
-          console.log('🤖 [DEVLAB] Initializing EDUCORE Bot...', {
-            microservice: 'DEVLAB',
-            userId: effectiveUser.id,
-            hasToken: !!token,
-            tenantId: effectiveUser.tenantId || 'default'
-          })
           window.initializeEducoreBot({
             microservice: 'DEVLAB',
-            userId: effectiveUser.id,
-            token: token,
-            tenantId: effectiveUser.tenantId || 'default'
+            userId: directoryUserId,
+            token,
+            tenantId: authContext?.organizationId || 'default'
           })
-          console.log('✅ [DEVLAB] EDUCORE Bot initialized successfully')
         } else {
           retryCount++
           if (retryCount < MAX_RETRIES) {
-            if (retryCount % 10 === 0) {
-              console.log(`⏳ [DEVLAB] Bot script not loaded yet, retrying... (${retryCount}/${MAX_RETRIES})`)
-            }
             timeoutId = setTimeout(initChatbot, 100)
-          } else {
-            console.error('❌ [DEVLAB] Failed to load bot script after maximum retries')
           }
-        }
-      } else {
-        if (retryCount === 0) {
-          console.warn('⚠️ [DEVLAB] Cannot initialize bot: missing user or token', {
-            hasUser: !!effectiveUser,
-            userId: effectiveUser?.id,
-            hasToken: !!localStorage.getItem('auth-token')
-          })
         }
       }
     }
-    
-    // Initialize when component mounts and user is available
-    if (effectiveUser?.id) {
-      // Wait a bit for script to load if it's in the HTML
+
+    if (directoryUserId && getAuthToken()) {
       timeoutId = setTimeout(initChatbot, 200)
     }
-    
-    // Cleanup function to clear timeout if component unmounts
+
     return () => {
       if (timeoutId) {
         clearTimeout(timeoutId)
       }
     }
-  }, [effectiveUser])
+  }, [directoryUserId, authContext?.organizationId])
 
   useEffect(() => {
-    if (!learnerId) {
-      setError('Learner context missing. Please sign in again.')
-      setLoading(false)
-      return
-    }
-
     let isMounted = true
     setLoading(true)
     setError(null)
 
     ;(async () => {
       try {
-        const [profileData, competitionsData] = await Promise.all([
-          apiClient.get(`/user-profiles/${learnerId}`),
-          competitionsAIAPI.getPendingCompetitions(learnerId)
-        ])
+        if (usePlatformAuth) {
+          if (!hasAuthToken()) {
+            if (!isMounted) return
+            setAuthContext(null)
+            setPendingCompetitions([])
+            setError('Sign in through Directory to view your competitions.')
+            return
+          }
 
-        if (!isMounted) {
+          const [context, competitionsData] = await Promise.all([
+            competitionsAIAPI.getAuthContext(),
+            competitionsAIAPI.getPendingCompetitionsForMe()
+          ])
+
+          if (!isMounted) return
+
+          setAuthContext(context)
+          setPendingCompetitions(Array.isArray(competitionsData) ? competitionsData : [])
+
+          if (context?.directoryUserId) {
+            try {
+              const profileData = await apiClient.get(`/user-profiles/${context.directoryUserId}`)
+              if (isMounted) {
+                setLearnerProfile(profileData?.data || profileData || null)
+              }
+            } catch {
+              if (isMounted) {
+                setLearnerProfile(null)
+              }
+            }
+          }
           return
         }
+
+        if (!devLearnerOverride) {
+          if (!isMounted) return
+          setError('Local development requires VITE_FORCE_LEARNER_ID when no platform token is present.')
+          setPendingCompetitions([])
+          return
+        }
+
+        const [profileData, competitionsData] = await Promise.all([
+          apiClient.get(`/user-profiles/${devLearnerOverride}`),
+          competitionsAIAPI.getPendingCompetitions(devLearnerOverride)
+        ])
+
+        if (!isMounted) return
 
         setLearnerProfile(profileData?.data || profileData || null)
         setPendingCompetitions(Array.isArray(competitionsData) ? competitionsData : [])
       } catch (fetchError) {
         console.error('[Dashboard] Failed to load data:', fetchError)
-        if (isMounted) {
+        if (!isMounted) return
+        const status = fetchError?.response?.status
+        if (status === 401 || status === 403) {
+          setError('Your session is invalid or expired. Open DevLab from Directory again.')
+        } else {
           setError('Unable to load competitions. Please try again.')
-          setPendingCompetitions([])
         }
+        setPendingCompetitions([])
       } finally {
         if (isMounted) {
           setLoading(false)
@@ -158,7 +168,7 @@ export default function Dashboard() {
     return () => {
       isMounted = false
     }
-  }, [learnerId])
+  }, [usePlatformAuth, devLearnerOverride])
 
   const handleNavigateToIntro = (competition) => {
     navigate(`/competitions/${competition.competition_id}/intro`, {
@@ -166,7 +176,7 @@ export default function Dashboard() {
     })
   }
 
-  if (!learnerId) {
+  if (!usePlatformAuth && !devLearnerOverride) {
     return (
       <div
         className={`min-h-screen py-10 px-4 transition-colors duration-300 ${
@@ -186,7 +196,7 @@ export default function Dashboard() {
             }`}
           >
             <p className="text-center text-red-400 font-medium">
-              Unable to determine learner context. Please refresh or log in again.
+              Sign in through Directory to view your competitions.
             </p>
           </motion.div>
         </div>
@@ -229,7 +239,7 @@ export default function Dashboard() {
                   theme === 'day-mode' ? 'text-slate-900' : 'text-slate-100'
                 }`}
               >
-                Welcome, {learnerProfile?.learner_name || effectiveUser?.name || 'Learner'}!
+                Welcome, {learnerProfile?.learner_name || 'Learner'}!
               </h1>
               <p className={theme === 'day-mode' ? 'text-slate-600' : 'text-slate-300'}>
                 Complete courses, unlock competitions, and challenge the DevLab AI.
