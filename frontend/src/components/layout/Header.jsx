@@ -1,18 +1,27 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { logout as performPlatformLogout } from '../../auth/logout.js'
-import { LogOut } from 'lucide-react'
+import { Code2, LogOut } from 'lucide-react'
 import Button from '../ui/Button.jsx'
 import ThemeToggle from '../ThemeToggle.jsx'
 import { useTheme } from '../../contexts/ThemeContext.jsx'
+import logoLight from '../../assets/images/logo-light.jpg'
+import logoDark from '../../assets/images/logo-dark.jpg'
 
 export default function Header() {
   const { theme } = useTheme()
+  const [logoError, setLogoError] = useState(false)
+
+  const logo = theme === 'night-mode' ? logoDark : logoLight
+  const showLogo = logo && !logoError
+
+  useEffect(() => {
+    setLogoError(false)
+  }, [theme])
 
   const handleLogout = () => {
     void performPlatformLogout()
   }
-
-  const logoUrl = theme === 'day-mode' ? '/light-logo.jpeg' : '/dark-logo.jpeg'
-  console.log('[Header] logoUrl:', logoUrl)
 
   return (
     <header 
@@ -20,24 +29,21 @@ export default function Header() {
     >
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
-          {/* DEVLAB Logo */}
-          <div className="flex items-center space-x-4">
-            <div className="flex-shrink-0 h-12 w-12 rounded-lg flex items-center justify-center">
+          <Link to="/dashboard" className="flex items-center gap-3 no-underline">
+            {showLogo ? (
               <img
-                src={logoUrl}
-                alt="DEVLAB Logo"
-                className="h-12 w-12 rounded-lg object-cover"
-                onError={(e) => {
-                  // Prevent infinite loop
-                  e.currentTarget.onerror = null
-
-                  // Try a fallback path if the image isn't served from public root
-                  e.currentTarget.src = theme === 'day-mode'
-                    ? '/assets/light-logo.jpeg'
-                    : '/assets/dark-logo.jpeg'
-                }}
+                src={logo}
+                alt="EDUCORE AI Logo"
+                className="h-14 w-auto"
+                onError={() => setLogoError(true)}
               />
-            </div>
+            ) : (
+              <Code2
+                className={`h-10 w-10 ${theme === 'day-mode' ? 'text-emerald-600' : 'text-emerald-400'}`}
+                aria-hidden="true"
+              />
+            )}
+
             <div>
               <h1 
                 className="text-2xl font-bold"
@@ -54,7 +60,7 @@ export default function Header() {
                 AI-Powered Learning Platform
               </span>
             </div>
-          </div>
+          </Link>
           
           <div className="flex items-center space-x-4">
             <ThemeToggle />
